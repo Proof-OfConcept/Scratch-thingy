@@ -2,26 +2,29 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tilemap Exporter for CodeTorch</title>
     <style>
-        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; user-select: none; }
+        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; user-select: none; touch-action: none; }
         .controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
         .container { display: flex; gap: 20px; }
-        #tileset { border: 2px solid #444; padding: 10px; min-width: 150px; max-height: 500px; overflow-y: auto; background: #333; }
+        #tileset-container { display: flex; flex-direction: column; gap: 10px; }
+        #tileset { border: 2px solid #444; padding: 10px; min-width: 150px; max-height: 400px; overflow-y: auto; background: #333; }
         .tile-option { display: inline-block; margin: 5px; border: 2px solid transparent; cursor: pointer; text-align: center; }
         .tile-option img { width: 32px; height: 32px; image-rendering: pixelated; display: block; }
         .tile-option.selected { border-color: #00ff00; }
         .tile-label { font-size: 10px; color: #ccc; }
+        #eraser-btn { padding: 10px; background: #555; border: 2px solid transparent; color: white; cursor: pointer; text-align: center; font-weight: bold; border-radius: 4px; }
+        #eraser-btn.selected { border-color: #ff0000; background: #882222; }
         #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; }
         #grid { display: grid; }
-        .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; cursor: pointer; image-rendering: pixelated; background-size: cover; }
+        .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; image-rendering: pixelated; background-size: cover; }
         textarea { width: 200px; height: 300px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; white-space: pre; }
     </style>
 </head>
 <body>
 
-    <h2>Tilemap Exporter</h2>
+    <h2>Tilemap Exporter (Touch Support)</h2>
     
     <div class="controls">
         <label>Upload Tiles: <input type="file" id="file-input" multiple accept="image/*"></label>
@@ -32,7 +35,8 @@
     </div>
 
     <div class="container">
-        <div>
+        <div id="tileset-container">
+            <button id="eraser-btn">🗑️ Eraser (0000)</button>
             <h3>Tiles</h3>
             <div id="tileset">No tiles loaded</div>
         </div>
@@ -48,26 +52,26 @@
     <textarea id="output" readonly placeholder="Your CodeTorch list will appear here..."></textarea>
 
     <script>
-        let tiles = {}; // Stores { paddedId: dataURL }
+        let tiles = {}; 
         let selectedTileId = null;
+        let isEraserMode = false;
         let gridWidth = 10;
         let gridHeight = 10;
-        let mapData = []; // 2D array tracking tile IDs as strings
+        let mapData = []; 
         let isDrawing = false;
 
         const fileInput = document.getElementById('file-input');
         const tilesetDiv = document.getElementById('tileset');
         const grid = document.getElementById('grid');
         const output = document.getElementById('output');
+        const eraserBtn = document.getElementById('eraser-btn');
 
-        // Extract numbers and pad to 3 digits (e.g., "tile_1.png" -> "001")
         function getPaddedTileId(filename) {
             const match = filename.match(/\d+/);
             if (!match) return null;
-            return match[0].padStart(3, '0');
+            return match[0].padStart(4, '0');
         }
 
-        // Handle Tile Uploads
         fileInput.addEventListener('change', (e) => {
             const files = e.target.files;
             if (files.length === 0) return;
@@ -87,19 +91,27 @@
                     div.innerHTML = `<img src="${event.target.result}"><div class="tile-label">${idStr}</div>`;
                     
                     div.addEventListener('click', () => {
+                        isEraserMode = false;
+                        eraserBtn.classList.remove('selected');
                         document.querySelectorAll('.tile-option').forEach(el => el.classList.remove('selected'));
                         div.classList.add('selected');
                         selectedTileId = idStr;
                     });
 
                     tilesetDiv.appendChild(div);
-                    if (!selectedTileId) div.click();
+                    if (!selectedTileId && !isEraserMode) div.click();
                 };
                 reader.readAsDataURL(file);
             });
         });
 
-        // Initialize/Resize Grid
+        eraserBtn.addEventListener('click', () => {
+            isEraserMode = true;
+            selectedTileId = null;
+            document.querySelectorAll('.tile-option').forEach(el => el.classList.remove('selected'));
+            eraserBtn.classList.add('selected');
+        });
+
         function initGrid() {
             gridWidth = parseInt(document.getElementById('grid-width').value, 10);
             gridHeight = parseInt(document.getElementById('grid-height').value, 10);
@@ -111,25 +123,20 @@
             for (let y = 0; y < gridHeight; y++) {
                 newMapData[y] = [];
                 for (let x = 0; x < gridWidth; x++) {
-                    // Default to "000" if blank
-                    newMapData[y][x] = (mapData[y] && mapData[y][x]) ? mapData[y][x] : "000";
+                    newMapData[y][x] = (mapData[y] && mapData[y][x]) ? mapData[y][x] : "0000";
                     
                     const cell = document.createElement('div');
                     cell.className = 'grid-cell';
                     cell.dataset.x = x;
                     cell.dataset.y = y;
                     
-                    if (newMapData[y][x] !== "000" && tiles[newMapData[y][x]]) {
+                    if (newMapData[y][x] !== "0000" && tiles[newMapData[y][x]]) {
                         cell.style.backgroundImage = `url(${tiles[newMapData[y][x]]})`;
                     }
 
-                    cell.addEventListener('mousedown', (e) => {
-                        isDrawing = true;
-                        paintCell(cell, x, y);
-                    });
-                    cell.addEventListener('mouseenter', () => {
-                        if (isDrawing) paintCell(cell, x, y);
-                    });
+                    // Mouse handling
+                    cell.addEventListener('mousedown', (e) => { isDrawing = true; handlePaint(x, y, cell); });
+                    cell.addEventListener('mouseenter', () => { if (isDrawing) handlePaint(x, y, cell); });
 
                     grid.appendChild(cell);
                 }
@@ -137,17 +144,47 @@
             mapData = newMapData;
         }
 
-        function paintCell(cell, x, y) {
-            if (selectedTileId !== null) {
+        function handlePaint(x, y, cell) {
+            if (isEraserMode) {
+                mapData[y][x] = "0000";
+                cell.style.backgroundImage = 'none';
+            } else if (selectedTileId !== null) {
                 mapData[y][x] = selectedTileId;
                 cell.style.backgroundImage = `url(${tiles[selectedTileId]})`;
             }
         }
 
+        // Touch Dragging Logic for iPad
+        function handleTouchPaint(e) {
+            if (!isDrawing) return;
+            const touch = e.touches[0];
+            // Find element under the current touch coordinate
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+            
+            if (element && element.classList.contains('grid-cell')) {
+                const x = parseInt(element.dataset.x, 10);
+                const y = parseInt(element.dataset.y, 10);
+                handlePaint(x, y, element);
+            }
+        }
+
+        grid.addEventListener('touchstart', (e) => {
+            isDrawing = true;
+            handleTouchPaint(e);
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (isDrawing) {
+                handleTouchPaint(e);
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', () => { isDrawing = false; });
         window.addEventListener('mousedown', () => { isDrawing = true; });
         window.addEventListener('mouseup', () => { isDrawing = false; });
 
-        // Export data to a vertical list (newline separated)
+        document.getElementById('resize-btn').addEventListener('click', initGrid);
+
         document.getElementById('export-btn').addEventListener('click', () => {
             let flatList = [];
             for (let y = 0; y < gridHeight; y++) {
@@ -155,7 +192,6 @@
                     flatList.push(mapData[y][x]);
                 }
             }
-            // Joins everything with a newline character instead of a comma
             output.value = flatList.join('\n');
         });
 
