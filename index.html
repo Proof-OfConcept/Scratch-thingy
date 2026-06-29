@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tilemap Exporter for CodeTorch</title>
     <style>
-        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; }
+        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; user-select: none; }
         .controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
         .container { display: flex; gap: 20px; }
         #tileset { border: 2px solid #444; padding: 10px; min-width: 150px; max-height: 500px; overflow-y: auto; background: #333; }
@@ -16,7 +16,7 @@
         #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; }
         #grid { display: grid; }
         .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; cursor: pointer; image-rendering: pixelated; background-size: cover; }
-        textarea { width: 100%; height: 100px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; }
+        textarea { width: 100%; height: 100px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; }
     </style>
 </head>
 <body>
@@ -48,11 +48,11 @@
     <textarea id="output" readonly placeholder="Your CodeTorch list will appear here..."></textarea>
 
     <script>
-        let tiles = {}; // Stores { id: dataURL }
+        let tiles = {}; // Stores { paddedId: dataURL }
         let selectedTileId = null;
         let gridWidth = 10;
         let gridHeight = 10;
-        let mapData = []; // 2D array tracking tile IDs
+        let mapData = []; // 2D array tracking tile IDs as strings
         let isDrawing = false;
 
         const fileInput = document.getElementById('file-input');
@@ -60,10 +60,11 @@
         const grid = document.getElementById('grid');
         const output = document.getElementById('output');
 
-        // Extract numbers from filename (e.g., "tile_0001.png" -> 1)
-        function getTileId(filename) {
+        // Extract numbers and pad to 4 digits (e.g., "tile_01.png" -> "0001")
+        function getPaddedTileId(filename) {
             const match = filename.match(/\d+/);
-            return match ? parseInt(match[0], 10) : null;
+            if (!match) return null;
+            return match[0].padStart(4, '0');
         }
 
         // Handle Tile Uploads
@@ -73,26 +74,26 @@
             tilesetDiv.innerHTML = '';
 
             Array.from(files).forEach(file => {
-                const id = getTileId(file.name);
-                if (id === null) return;
+                const idStr = getPaddedTileId(file.name);
+                if (idStr === null) return;
 
                 const reader = new FileReader();
                 reader.onload = (event) => {
-                    tiles[id] = event.target.result;
+                    tiles[idStr] = event.target.result;
                     
                     const div = document.createElement('div');
                     div.className = 'tile-option';
-                    div.dataset.id = id;
-                    div.innerHTML = `<img src="${event.target.result}"><div class="tile-label">${id}</div>`;
+                    div.dataset.id = idStr;
+                    div.innerHTML = `<img src="${event.target.result}"><div class="tile-label">${idStr}</div>`;
                     
                     div.addEventListener('click', () => {
                         document.querySelectorAll('.tile-option').forEach(el => el.classList.remove('selected'));
                         div.classList.add('selected');
-                        selectedTileId = id;
+                        selectedTileId = idStr;
                     });
 
                     tilesetDiv.appendChild(div);
-                    if (!selectedTileId) div.click(); // Select first loaded tile automatically
+                    if (!selectedTileId) div.click();
                 };
                 reader.readAsDataURL(file);
             });
@@ -106,23 +107,23 @@
             grid.style.gridTemplateColumns = `repeat(${gridWidth}, 32px)`;
             grid.innerHTML = '';
             
-            // Rebuild map data array, preserving old data where possible, defaulting to 0 (empty)
             let newMapData = [];
             for (let y = 0; y < gridHeight; y++) {
                 newMapData[y] = [];
                 for (let x = 0; x < gridWidth; x++) {
-                    newMapData[y][x] = (mapData[y] && mapData[y][x]) ? mapData[y][x] : 0;
+                    // Default to "0000" if blank
+                    newMapData[y][x] = (mapData[y] && mapData[y][x]) ? mapData[y][x] : "0000";
                     
                     const cell = document.createElement('div');
                     cell.className = 'grid-cell';
                     cell.dataset.x = x;
                     cell.dataset.y = y;
                     
-                    if (newMapData[y][x] !== 0 && tiles[newMapData[y][x]]) {
+                    if (newMapData[y][x] !== "0000" && tiles[newMapData[y][x]]) {
                         cell.style.backgroundImage = `url(${tiles[newMapData[y][x]]})`;
                     }
 
-                    // Mouse draw events
+                    // Continuous drag painting handler
                     cell.addEventListener('mousedown', (e) => {
                         isDrawing = true;
                         paintCell(cell, x, y);
@@ -144,9 +145,9 @@
             }
         }
 
-        // Global mouse up to stop drawing
-        window.addEventListener('mouseup', () => isDrawing = false);
-        document.getElementById('resize-btn').addEventListener('click', initGrid);
+        // Global mouse up/down tracking to fix edge case dragging errors
+        window.addEventListener('mousedown', () => { isDrawing = true; });
+        window.addEventListener('mouseup', () => { isDrawing = false; });
 
         // Export data to flat list
         document.getElementById('export-btn').addEventListener('click', () => {
@@ -156,11 +157,9 @@
                     flatList.push(mapData[y][x]);
                 }
             }
-            // Outputs as a simple comma-separated string: 1,1,1,2,0,1...
             output.value = flatList.join(',');
         });
 
-        // Start with a default grid
         initGrid();
     </script>
 </body>
