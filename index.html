@@ -5,23 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tilemap Exporter for CodeTorch</title>
     <style>
-        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; user-select: none; touch-action: none; }
+        body { font-family: sans-serif; background: #222; color: #fff; margin: 20px; user-select: none; }
         .controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
-        .container { display: flex; gap: 20px; }
-        #tileset-container { display: flex; flex-direction: column; gap: 10px; }
-        #tileset { border: 2px solid #444; padding: 10px; min-width: 150px; max-height: 400px; overflow-y: auto; background: #333; }
+        .container { display: flex; gap: 20px; height: 75vh; }
+        
+        /* Left Panel: Tiles & Eraser */
+        #tileset-container { display: flex; flex-direction: column; gap: 10px; width: 180px; flex-shrink: 0; }
+        #tileset { border: 2px solid #444; padding: 10px; height: 100%; overflow-y: auto; background: #333; }
         .tile-option { display: inline-block; margin: 5px; border: 2px solid transparent; cursor: pointer; text-align: center; }
         .tile-option img { width: 32px; height: 32px; image-rendering: pixelated; display: block; }
         .tile-option.selected { border-color: #00ff00; }
         .tile-label { font-size: 10px; color: #ccc; }
+        
         #eraser-btn { padding: 10px; background: #555; border: 2px solid transparent; color: white; cursor: pointer; text-align: center; font-weight: bold; border-radius: 4px; }
         #eraser-btn.selected { border-color: #ff0000; background: #882222; }
-        #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; touch-action: none; }
-        #grid { display: grid; touch-action: none; }
-        .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; image-rendering: pixelated; background-size: cover; }
+        
+        /* Right Panel: Dedicated Scrollable Map Section */
+        #map-panel { flex-grow: 1; border: 2px solid #444; background: #111; overflow: auto; position: relative; display: flex; flex-direction: column; }
+        #map-header { background: #292929; padding: 8px; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #444; }
+        #grid-container { overflow: auto; flex-grow: 1; padding: 10px; }
+        #grid { display: grid; margin: 0 auto; }
+        
+        /* Dynamic cell size controlled via JS CSS Variables */
+        .grid-cell { width: var(--cell-size, 32px); height: var(--cell-size, 32px); border: 1px solid #333; box-sizing: border-box; image-rendering: pixelated; background-size: cover; }
+        
         .btn-blue { background: #007bc4; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
         .btn-green { background: #28a745; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
-        textarea { width: 200px; height: 150px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; white-space: pre; }
+        .btn-zoom { background: #444; color: white; border: 1px solid #666; padding: 4px 10px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+        
+        textarea { width: 200px; height: 100px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; white-space: pre; }
     </style>
 </head>
 <body>
@@ -30,8 +42,8 @@
     
     <div class="controls">
         <label>Upload Tiles: <input type="file" id="file-input" multiple accept="image/*"></label>
-        <label>Width: <input type="number" id="grid-width" value="10" min="1" style="width: 50px;"></label>
-        <label>Height: <input type="number" id="grid-height" value="10" min="1" style="width: 50px;"></label>
+        <label>Width: <input type="number" id="grid-width" value="20" min="1" style="width: 50px;"></label>
+        <label>Height: <input type="number" id="grid-height" value="20" min="1" style="width: 50px;"></label>
         <button id="resize-btn">Update Grid Size</button>
         <button id="export-btn" class="btn-blue">Generate Text</button>
         <button id="download-btn" class="btn-green">💾 Download .txt File</button>
@@ -43,8 +55,14 @@
             <h3>Tiles</h3>
             <div id="tileset">No tiles loaded</div>
         </div>
-        <div>
-            <h3>Map Grid</h3>
+        
+        <div id="map-panel">
+            <div id="map-header">
+                <span>Map Canvas</span>
+                <button class="btn-zoom" id="zoom-out-btn">🔍 Zoom Out</button>
+                <button class="btn-zoom" id="zoom-in-btn">🔍 Zoom In</button>
+                <span id="zoom-display" style="font-size: 12px; color: #aaa;">32px</span>
+            </div>
             <div id="grid-container">
                 <div id="grid"></div>
             </div>
@@ -58,10 +76,14 @@
         let tiles = {}; 
         let selectedTileId = null;
         let isEraserMode = false;
-        let gridWidth = 10;
-        let gridHeight = 10;
+        let gridWidth = 20;
+        let gridHeight = 20;
         let mapData = []; 
         let isDrawing = false;
+        
+        // Zoom configurations
+        let zoomSizes = [16, 24, 32, 48, 64];
+        let currentZoomIndex = 2; // Defaults to 32px
 
         const fileInput = document.getElementById('file-input');
         const tilesetDiv = document.getElementById('tileset');
@@ -115,12 +137,19 @@
             eraserBtn.classList.add('selected');
         });
 
+        function updateZoomCSS() {
+            const size = zoomSizes[currentZoomIndex];
+            document.documentElement.style.setProperty('--cell-size', `${size}px`);
+            grid.style.gridTemplateColumns = `repeat(${gridWidth}, ${size}px)`;
+            document.getElementById('zoom-display').innerText = `${size}px`;
+        }
+
         function initGrid() {
             gridWidth = parseInt(document.getElementById('grid-width').value, 10);
             gridHeight = parseInt(document.getElementById('grid-height').value, 10);
             
-            grid.style.gridTemplateColumns = `repeat(${gridWidth}, 32px)`;
             grid.innerHTML = '';
+            updateZoomCSS();
             
             let newMapData = [];
             for (let y = 0; y < gridHeight; y++) {
@@ -168,7 +197,6 @@
             }
         }
 
-        // Added e.preventDefault() to explicitly block iPad scrolling mechanics
         grid.addEventListener('touchstart', (e) => {
             isDrawing = true;
             if (e.cancelable) e.preventDefault(); 
@@ -185,6 +213,20 @@
         window.addEventListener('touchend', () => { isDrawing = false; });
         window.addEventListener('mousedown', () => { isDrawing = true; });
         window.addEventListener('mouseup', () => { isDrawing = false; });
+
+        // Zoom Listeners
+        document.getElementById('zoom-in-btn').addEventListener('click', () => {
+            if (currentZoomIndex < zoomSizes.length - 1) {
+                currentZoomIndex++;
+                updateZoomCSS();
+            }
+        });
+        document.getElementById('zoom-out-btn').addEventListener('click', () => {
+            if (currentZoomIndex > 0) {
+                currentZoomIndex--;
+                updateZoomCSS();
+            }
+        });
 
         document.getElementById('resize-btn').addEventListener('click', initGrid);
 
@@ -206,12 +248,10 @@
             const text = generateTextContent();
             const blob = new Blob([text], { type: 'text/plain' });
             const anchor = document.createElement('a');
-            
             anchor.download = 'map.txt';
             anchor.href = window.URL.createObjectURL(blob);
             anchor.target = '_blank';
             anchor.style.display = 'none';
-            
             document.body.appendChild(anchor);
             anchor.click();
             document.body.removeChild(anchor);
