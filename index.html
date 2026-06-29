@@ -16,8 +16,8 @@
         .tile-label { font-size: 10px; color: #ccc; }
         #eraser-btn { padding: 10px; background: #555; border: 2px solid transparent; color: white; cursor: pointer; text-align: center; font-weight: bold; border-radius: 4px; }
         #eraser-btn.selected { border-color: #ff0000; background: #882222; }
-        #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; }
-        #grid { display: grid; }
+        #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; touch-action: none; }
+        #grid { display: grid; touch-action: none; }
         .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; image-rendering: pixelated; background-size: cover; }
         .btn-blue { background: #007bc4; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
         .btn-green { background: #28a745; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
@@ -168,14 +168,19 @@
             }
         }
 
+        // Added e.preventDefault() to explicitly block iPad scrolling mechanics
         grid.addEventListener('touchstart', (e) => {
             isDrawing = true;
+            if (e.cancelable) e.preventDefault(); 
             handleTouchPaint(e);
-        }, { passive: true });
+        }, { passive: false });
 
         window.addEventListener('touchmove', (e) => {
-            if (isDrawing) handleTouchPaint(e);
-        }, { passive: true });
+            if (isDrawing) {
+                if (e.cancelable) e.preventDefault(); 
+                handleTouchPaint(e);
+            }
+        }, { passive: false });
 
         window.addEventListener('touchend', () => { isDrawing = false; });
         window.addEventListener('mousedown', () => { isDrawing = true; });
@@ -183,7 +188,6 @@
 
         document.getElementById('resize-btn').addEventListener('click', initGrid);
 
-        // Get map data text string
         function generateTextContent() {
             let flatList = [];
             for (let y = 0; y < gridHeight; y++) {
@@ -198,7 +202,6 @@
             output.value = generateTextContent();
         });
 
-        // Generate file download directly from browser memory
         document.getElementById('download-btn').addEventListener('click', () => {
             const text = generateTextContent();
             const blob = new Blob([text], { type: 'text/plain' });
