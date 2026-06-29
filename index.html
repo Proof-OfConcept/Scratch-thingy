@@ -19,19 +19,22 @@
         #grid-container { overflow: auto; max-width: 70vw; max-height: 70vh; background: #111; border: 2px solid #444; }
         #grid { display: grid; }
         .grid-cell { width: 32px; height: 32px; border: 1px solid #333; box-sizing: border-box; image-rendering: pixelated; background-size: cover; }
-        textarea { width: 200px; height: 300px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; white-space: pre; }
+        .btn-blue { background: #007bc4; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+        .btn-green { background: #28a745; color: white; border: none; padding: 6px 12px; cursor: pointer; font-weight: bold; border-radius: 4px; }
+        textarea { width: 200px; height: 150px; background: #111; color: #00ff00; border: 1px solid #444; font-family: monospace; margin-top: 10px; user-select: text; white-space: pre; }
     </style>
 </head>
 <body>
 
-    <h2>Tilemap Exporter (Touch Support)</h2>
+    <h2>Tilemap Exporter</h2>
     
     <div class="controls">
         <label>Upload Tiles: <input type="file" id="file-input" multiple accept="image/*"></label>
         <label>Width: <input type="number" id="grid-width" value="10" min="1" style="width: 50px;"></label>
         <label>Height: <input type="number" id="grid-height" value="10" min="1" style="width: 50px;"></label>
         <button id="resize-btn">Update Grid Size</button>
-        <button id="export-btn" style="background: #007bc4; color: white; border: none; padding: 5px 10px; cursor: pointer;">Export List</button>
+        <button id="export-btn" class="btn-blue">Generate Text</button>
+        <button id="download-btn" class="btn-green">💾 Download .txt File</button>
     </div>
 
     <div class="container">
@@ -48,8 +51,8 @@
         </div>
     </div>
 
-    <h3>Exported Output</h3>
-    <textarea id="output" readonly placeholder="Your CodeTorch list will appear here..."></textarea>
+    <h3>Exported Output Preview</h3>
+    <textarea id="output" readonly placeholder="Text preview..."></textarea>
 
     <script>
         let tiles = {}; 
@@ -134,7 +137,6 @@
                         cell.style.backgroundImage = `url(${tiles[newMapData[y][x]]})`;
                     }
 
-                    // Mouse handling
                     cell.addEventListener('mousedown', (e) => { isDrawing = true; handlePaint(x, y, cell); });
                     cell.addEventListener('mouseenter', () => { if (isDrawing) handlePaint(x, y, cell); });
 
@@ -154,11 +156,9 @@
             }
         }
 
-        // Touch Dragging Logic for iPad
         function handleTouchPaint(e) {
             if (!isDrawing) return;
             const touch = e.touches[0];
-            // Find element under the current touch coordinate
             const element = document.elementFromPoint(touch.clientX, touch.clientY);
             
             if (element && element.classList.contains('grid-cell')) {
@@ -174,9 +174,7 @@
         }, { passive: true });
 
         window.addEventListener('touchmove', (e) => {
-            if (isDrawing) {
-                handleTouchPaint(e);
-            }
+            if (isDrawing) handleTouchPaint(e);
         }, { passive: true });
 
         window.addEventListener('touchend', () => { isDrawing = false; });
@@ -185,14 +183,35 @@
 
         document.getElementById('resize-btn').addEventListener('click', initGrid);
 
-        document.getElementById('export-btn').addEventListener('click', () => {
+        // Get map data text string
+        function generateTextContent() {
             let flatList = [];
             for (let y = 0; y < gridHeight; y++) {
                 for (let x = 0; x < gridWidth; x++) {
                     flatList.push(mapData[y][x]);
                 }
             }
-            output.value = flatList.join('\n');
+            return flatList.join('\n');
+        }
+
+        document.getElementById('export-btn').addEventListener('click', () => {
+            output.value = generateTextContent();
+        });
+
+        // Generate file download directly from browser memory
+        document.getElementById('download-btn').addEventListener('click', () => {
+            const text = generateTextContent();
+            const blob = new Blob([text], { type: 'text/plain' });
+            const anchor = document.createElement('a');
+            
+            anchor.download = 'map.txt';
+            anchor.href = window.URL.createObjectURL(blob);
+            anchor.target = '_blank';
+            anchor.style.display = 'none';
+            
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
         });
 
         initGrid();
